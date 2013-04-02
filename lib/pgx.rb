@@ -9,7 +9,6 @@ require 'pgx/table'
 require 'pgx/output'
 
 module PGx
-  VERSION = "0.0.1"
 
   LOG = Log4r::Logger.new 'pgx'
   Log4r::Outputter.stdout.formatter = Log4r::PatternFormatter.new(:pattern => "[%l] %d: %m", :date_method => :utc)
