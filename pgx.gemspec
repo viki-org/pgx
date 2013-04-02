@@ -6,11 +6,11 @@ require 'pgx'
 
 Gem::Specification.new do |s|
   s.name          = "pgx"
-  s.version       = "0.0.1" #PGx::VERSION
+  s.version       = PGx::VERSION
   s.authors       = ["Huy Nguyen"]
   s.email         = %w(huy@viki.com)
-  s.description   = %q{TODO: Write a gem description}
-  s.summary       = %q{TODO: Write a gem summary}
+  s.description   = %q{}
+  s.summary       = %q{Set of tools to support working directly with PostgreSQL database}
   s.homepage      = ""
 
   s.files         = `git ls-files`.split($/)
