@@ -22,7 +22,8 @@ FactoryGirl.define do
       ignore { indexes [
                          { columns: %w(wei_column), primary: true },
                          { columns: %w(wei_column mike_column) },
-                         { columns: %w(mike_column), name: 'jason_index', unique: true }
+                         { columns: %w(mike_column), name: 'jason_index', unique: true },
+                         { columns: %w(mike_column), name: 'partial_index', where: 'mike_column IS NOT NULL'}
                        ] }
     end
 

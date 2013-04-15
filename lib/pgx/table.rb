@@ -57,7 +57,7 @@ module PGx
         is_nullable,
         CASE WHEN data_type = 'character' THEN 'CHAR(' || character_maximum_length || ')'
              WHEN data_type = 'character varying' THEN 'VARCHAR(' || COALESCE(character_maximum_length, 255) || ')'
-             WHEN data_type = 'numeric' THEN 'NUMERIC(' || numeric_precision || ',' || numeric_scale || ')'
+             WHEN data_type = 'numeric' THEN 'NUMERIC(' || COALESCE(numeric_precision, 50) || ',' || COALESCE(numeric_scale, 20) || ')'
              WHEN data_type = 'integer' THEN 'INT'
              WHEN data_type = 'ARRAY' THEN 'VARCHAR(255)[]'
              ELSE UPPER(data_type) END AS "data_type",
@@ -261,18 +261,18 @@ module PGx
 
     def fetch_index_names
       query = <<-SQL.strip_heredoc
-      SELECT
-          C.relname AS "index_name"
-      FROM pg_catalog.pg_class C,
-           pg_catalog.pg_namespace N,
-           pg_catalog.pg_index I,
-           pg_catalog.pg_class C2
-      WHERE C.relkind IN ( 'i', '' )
-        AND N.oid = C.relnamespace
-        AND N.nspname = $2
-        AND I.indexrelid = C.oid
-        AND C2.oid = I.indrelid
-        AND C2.relname = $1;
+        SELECT
+            C.relname AS "index_name"
+        FROM pg_catalog.pg_class C,
+             pg_catalog.pg_namespace N,
+             pg_catalog.pg_index I,
+             pg_catalog.pg_class C2
+        WHERE C.relkind IN ( 'i', '' )
+          AND N.oid = C.relnamespace
+          AND N.nspname = $2
+          AND I.indexrelid = C.oid
+          AND C2.oid = I.indrelid
+          AND C2.relname = $1;
       SQL
       connection.exec(query, [name, schema]).map { |row| row['index_name'] }
     end

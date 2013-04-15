@@ -9,7 +9,8 @@ module PGx
       options = {
         name: index_name,
         unique: index_info['unique'],
-        primary: index_info['primary']
+        primary: index_info['primary'],
+        where: index_info['where']
       }
       self.new table, column_names, options
     end
@@ -51,6 +52,10 @@ module PGx
       @unique || primary?
     end
 
+    def where
+      @where
+    end
+
     def exists?
       match = table.fetch_indexes.detect { |i| i.column_names == column_names }
       !match.nil?
@@ -58,7 +63,7 @@ module PGx
 
     def equivalent_index? other_index
       return false unless other_index.is_a? self.class
-      [:schema, :column_names, :primary?, :unique?].each do |sym|
+      [:schema, :column_names, :primary?, :unique?, :where].each do |sym|
         return false unless self.send(sym) == other_index.send(sym)
       end
       table.name == other_index.table.name
@@ -113,7 +118,8 @@ module PGx
       SELECT
           C.oid,
           I.indisunique AS "unique",
-          I.indisprimary AS "primary"
+          I.indisprimary AS "primary",
+          pg_get_expr(I.indpred, I.indrelid) AS "where"
       FROM pg_catalog.pg_class C,
            pg_catalog.pg_namespace N,
            pg_catalog.pg_index I
@@ -125,6 +131,7 @@ module PGx
       connection.exec(sql, [schema_name, index_name])[0].tap do |info|
         info['unique'] = info['unique'] != 'f'
         info['primary'] = info['primary'] != 'f'
+        info['where'] = info['where'][1..-2] if info['where'].present?
       end
     end
 
