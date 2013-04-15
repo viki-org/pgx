@@ -192,6 +192,15 @@ describe PGx::Index do
       end
     end
 
+    context "when :where is specified" do
+      let(:options) { {where: 'date_d IS NOT NULL' }}
+
+      it "injects the where clause to creation statement" do
+        connection.should_receive(:exec).with(%Q{CREATE INDEX "idx_diego_table_on_wei_column_2" ON #{table.qualified_name} (#{columns_string}) WHERE date_d IS NOT NULL;})
+        subject
+      end
+    end
+
     context "when the index already exists" do
       it "drops index first" do
         PGx::Connection.any_instance.stub(:index_exists?).and_return(true)

@@ -20,6 +20,7 @@ module PGx
       @name = options[:name]
       @primary = !!options[:primary]
       @unique = !!options[:unique]
+      @where = options[:where]
 
       raise "Not a table: #{table}" if table.nil? || !table.is_a?(PGx::Table)
     end
@@ -64,7 +65,7 @@ module PGx
     end
 
     def create
-      PGx.log.info "Indexing #{table.qualified_name} on #{column_names.join(', ')} (#{name})"
+      PGx.log.info "Indexing #{table.qualified_name} on #{column_names.join(', ')} (#{name}) #@where"
 
       if table.connection.index_exists?(name, table.schema)
         PGx.log.info "Index #{name} already exists. Dropping"
@@ -72,7 +73,7 @@ module PGx
       end
 
       start_time = Time.now
-      options = { column_array: column_names, unique: unique?, schema_name: schema }
+      options = { column_array: column_names, unique: unique?, schema_name: schema, where: @where }
       table.connection.exec_create_index(name, table.name, options)
 
       if primary?

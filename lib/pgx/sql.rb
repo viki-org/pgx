@@ -56,11 +56,13 @@ module PGx
 
       table_name = get_qualified_relation_name(table_name, options[:schema_name])
 
+      where_clause = " WHERE #{options[:where]}" unless options[:where].blank?
+
       sql = "CREATE "
       sql << "UNIQUE " if options[:unique]
       sql << %Q{INDEX "#{index_name}" ON #{ table_name } (}
       sql << options[:column_array].map { |c| c.match(/[A-Z]+/) ? %Q{"#{c}"} : c }.join(", ") if options.has_key? :column_array
-      sql << ");"
+      sql << ")#{where_clause};"
     end
 
     def build_alter_index_sql(index_name, options = { })
