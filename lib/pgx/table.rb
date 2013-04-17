@@ -165,6 +165,7 @@ module PGx
     end
 
     def create options = { }
+      self.drop check_exists: true if options[:force]
       connection.exec_create_table name, options.merge(unlogged: unlogged, schema_name: schema, column_array: self.class.inject_raw_columns(columns))
     end
 
