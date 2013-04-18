@@ -8,7 +8,7 @@ module PGx
     attr_accessor :schema, :columns, :indexes, :connection, :unlogged
     attr_reader :base_name
 
-    def self.load table_name, options = { }
+    def self.load table_name, options = {}
       path = options[:path] || PGx.table_path
       pathname = Pathname.new File.join(path, "#{table_name}.json")
       table_spec = JSON.load(pathname)
@@ -82,7 +82,7 @@ module PGx
         [c].tap do |columns|
           raw_info = c[:pg_raw]
           if raw_info
-            raw_column = { column_name: "#{c[:column_name]}_raw" }
+            raw_column = {column_name: "#{c[:column_name]}_raw"}
             if Hash === raw_info && raw_info.has_key?(:data_type)
               [:data_type, :is_nullable].each { |k| raw_column[k] = raw_info[k] }
             end
@@ -92,7 +92,7 @@ module PGx
       end.flatten
     end
 
-    def initialize base_name, options = { }
+    def initialize base_name, options = {}
       @base_name = base_name
       @columns = options[:columns] || []
       @schema = options[:schema] || DEFAULT_SCHEMA
@@ -153,10 +153,17 @@ module PGx
       self
     end
 
-    def get_temp_table
+    def get_temp_table options = {}
       PGx::Table.allocate.tap do |temp|
         temp.copy_from self
-        temp.instance_variable_set(:@temp, true)
+
+        if options[:through_schema]
+          temp.schema = "temp_#{temp.schema}"
+        else
+          temp.instance_variable_set(:@temp, true)
+        end
+
+
       end
     end
 
@@ -177,11 +184,11 @@ module PGx
       end
     end
 
-    def drop options = { }
+    def drop options = {}
       if options[:check_exists]
         return unless self.exists?
       end
-      connection.exec_drop_table(name, options.merge({ schema_name: schema }))
+      connection.exec_drop_table(name, options.merge({schema_name: schema}))
     end
 
     def exists?
@@ -196,14 +203,14 @@ module PGx
         columns = row.map { |pair| pair[0] }
         values = row.map { |pair| pair[1] }
 
-        sql = connection.class.build_insert_into_pg_sql(name, { schema_name: schema, column_array: columns })
+        sql = connection.class.build_insert_into_pg_sql(name, {schema_name: schema, column_array: columns})
         connection.exec_and_log sql, values
       end
     end
 
     def insert_batch columns, rows, batch_size = 200
       return if rows.empty?
-      sql = connection.class.build_insert_into_pg_sql(name, { schema_name: schema, column_array: columns })
+      sql = connection.class.build_insert_into_pg_sql(name, {schema_name: schema, column_array: columns})
 
       rows.in_groups_of(batch_size, false).each do |row_group|
         connection.transaction do
@@ -212,7 +219,7 @@ module PGx
       end
     end
 
-    def insert_select select_string, options = { }
+    def insert_select select_string, options = {}
       options[:column_array] = options.delete(:column_names) || column_names_with_raw_columns
       options[:schema_name] = schema
       args = options.delete(:arguments) || []
@@ -220,12 +227,12 @@ module PGx
       connection.exec_and_log sql, args
     end
 
-    def update rows, options={ }
+    def update rows, options={}
       rows.each do |row|
         columns = row.map { |pair| pair[0] }
         values = row.map { |pair| pair[1] }
 
-        sql = connection.class.build_update_pg_sql(name, { schema_name: schema, column_array: columns, where_clause: options[:where_clause] })
+        sql = connection.class.build_update_pg_sql(name, {schema_name: schema, column_array: columns, where_clause: options[:where_clause]})
         connection.exec_and_log sql, values
       end
     end
@@ -280,10 +287,10 @@ module PGx
 
     def select *args
       options = if args.last.is_a? Hash
-        args.pop.symbolize_keys
-      else
-        Hash.new
-      end
+                  args.pop.symbolize_keys
+                else
+                  Hash.new
+                end
       where_clause = args.delete_at(0)
 
       sql = "SELECT "
@@ -299,10 +306,10 @@ module PGx
 
     def select_simple column, *args
       options = if args.last.is_a? Hash
-        args.pop
-      else
-        Hash.new
-      end
+                  args.pop
+                else
+                  Hash.new
+                end
       rs = select *args, options.merge(columns: column)
       return nil if rs.count == 0
       rs[0][rs[0].keys[0]]
@@ -314,7 +321,7 @@ module PGx
       end
     end
 
-    def with_connection(options = { })
+    def with_connection(options = {})
       PGx::Connection.connect(options) do |connection|
         self.connection = connection
         result = yield self, connection
@@ -323,12 +330,11 @@ module PGx
       end
     end
 
-    def schema_hotswap new_schema_name = nil
-      new_schema_name ||= "temp_#{schema}"
+    def schema_hotswap temp_schema_name = nil
+      temp_table = get_temp_table(through_schema: true)
       connection.transaction do
-        create_schema connection, new_schema_name
-        drop_table connection, new_schema_name, name, :check_exists => true
-        connection.exec_and_log "ALTER TABLE #{qualified_name} SET SCHEMA #{new_schema_name}"
+        drop check_exists: true
+        connection.exec_and_log "ALTER TABLE #{temp_table.qualified_name} SET SCHEMA #{schema}"
       end
     end
 
@@ -343,7 +349,7 @@ module PGx
       }
     end
 
-    def hotswap_without_schema options = { }
+    def hotswap_without_schema options = {}
       temp_table = get_temp_table
       create_like_temp_table
       connection.transaction {
@@ -420,7 +426,7 @@ module PGx
       end
     end
 
-    def do_through_temp_table options = { }
+    def do_through_temp_table options = {}
       raise "#{self} is a temp table! :(" if temp?
 
       temp_table = get_temp_table
@@ -436,6 +442,22 @@ module PGx
 
       hotswap
     end
+
+    def do_through_temp_schema_table options = {}
+      temp_table = get_temp_table(through_schema: true)
+
+      temp_table.drop check_exists: true
+      temp_table.create
+
+      yield temp_table
+
+      temp_table.create_indexes unless options[:skip_indexes]
+
+      temp_table.vacuum_analyze
+
+      schema_hotswap
+    end
+
 
     def remove_sequences
       columns.each { |c| c.delete(:column_default) if c[:column_default] =~ /nextval.*::regclass/ }
