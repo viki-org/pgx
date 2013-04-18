@@ -108,18 +108,6 @@ describe PGx::Index do
       let(:options) { { name: 'json_index' } }
       it { should == 'json_index' }
     end
-
-    context "when the table is a temp table" do
-      let(:table) { FactoryGirl.build :table, :with_columns, :temp }
-
-      it { should == 'temp_idx_diego_table_on_wei_column' }
-
-      context "when the index name is specified" do
-        let(:options) { { name: 'json_index' } }
-
-        it{ should == 'temp_json_index' }
-      end
-    end
   end
 
   describe '#exists?', with_schema: TEST_SCHEMA_NAME do
@@ -151,7 +139,7 @@ describe PGx::Index do
       end
 
       dup = subject.dup
-      dup.table = FactoryGirl.build :table, base_name: 'foo'
+      dup.table = FactoryGirl.build :table, name: 'foo'
       subject.equivalent_index?(dup).should be_false
 
       dup = subject.dup

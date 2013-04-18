@@ -5,10 +5,9 @@ module PGx
     DEFAULT_SCHEMA = "reporting"
     include ::PGx::SQLHelper
 
-    attr_accessor :schema, :columns, :indexes, :connection, :unlogged
-    attr_reader :base_name
+    attr_accessor :schema, :columns, :indexes, :connection, :unlogged, :name
 
-    def self.load table_name, options = {}
+    def self.load table_name, options = { }
       path = options[:path] || PGx.table_path
       pathname = Pathname.new File.join(path, "#{table_name}.json")
       table_spec = JSON.load(pathname)
@@ -52,20 +51,20 @@ module PGx
     # TODO: Query pg_catalog instead
     def self.fetch_columns connection, table_name, schema_name
       query = <<-SQL.strip_heredoc
-    SELECT
-        column_name,
-        is_nullable,
-        CASE WHEN data_type = 'character' THEN 'CHAR(' || character_maximum_length || ')'
-             WHEN data_type = 'character varying' THEN 'VARCHAR(' || COALESCE(character_maximum_length, 255) || ')'
-             WHEN data_type = 'numeric' THEN 'NUMERIC(' || COALESCE(numeric_precision, 50) || ',' || COALESCE(numeric_scale, 20) || ')'
-             WHEN data_type = 'integer' THEN 'INT'
-             WHEN data_type = 'ARRAY' THEN 'VARCHAR(255)[]'
-             ELSE UPPER(data_type) END AS "data_type",
-        column_default
-    FROM information_schema.COLUMNS
-    WHERE table_schema = $2
-      AND table_name = $1
-    ORDER BY ORDINAL_POSITION;
+        SELECT
+            column_name,
+            is_nullable,
+            CASE WHEN data_type = 'character' THEN 'CHAR(' || character_maximum_length || ')'
+                 WHEN data_type = 'character varying' THEN 'VARCHAR(' || COALESCE(character_maximum_length, 255) || ')'
+                 WHEN data_type = 'numeric' THEN 'NUMERIC(' || COALESCE(numeric_precision, 50) || ',' || COALESCE(numeric_scale, 20) || ')'
+                 WHEN data_type = 'integer' THEN 'INT'
+                 WHEN data_type = 'ARRAY' THEN 'VARCHAR(255)[]'
+                 ELSE UPPER(data_type) END AS "data_type",
+            column_default
+        FROM information_schema.COLUMNS
+        WHERE table_schema = $2
+          AND table_name = $1
+        ORDER BY ORDINAL_POSITION;
       SQL
 
       rs = connection.exec query, [table_name, schema_name]
@@ -82,7 +81,7 @@ module PGx
         [c].tap do |columns|
           raw_info = c[:pg_raw]
           if raw_info
-            raw_column = {column_name: "#{c[:column_name]}_raw"}
+            raw_column = { column_name: "#{c[:column_name]}_raw" }
             if Hash === raw_info && raw_info.has_key?(:data_type)
               [:data_type, :is_nullable].each { |k| raw_column[k] = raw_info[k] }
             end
@@ -92,8 +91,8 @@ module PGx
       end.flatten
     end
 
-    def initialize base_name, options = {}
-      @base_name = base_name
+    def initialize name, options = { }
+      @name = name
       @columns = options[:columns] || []
       @schema = options[:schema] || DEFAULT_SCHEMA
       @temp = !(!options[:temp])
@@ -113,10 +112,6 @@ module PGx
 
     def qualified_name
       %Q{"#{schema}"."#{name}"}
-    end
-
-    def name
-      temp? ? temp_name : base_name
     end
 
     def connection
@@ -153,17 +148,11 @@ module PGx
       self
     end
 
-    def get_temp_table options = {}
+    def get_temp_table
       PGx::Table.allocate.tap do |temp|
         temp.copy_from self
-
-        if options[:through_schema]
-          temp.schema = "temp_#{temp.schema}"
-        else
-          temp.instance_variable_set(:@temp, true)
-        end
-
-
+        temp.schema = "temp_#{temp.schema}"
+        temp.instance_variable_set(:@temp, true)
       end
     end
 
@@ -171,7 +160,8 @@ module PGx
       yield get_temp_table
     end
 
-    def create options = { }
+    def create options = {}
+      create_schema connection, self.schema
       self.drop check_exists: true if options[:force]
       connection.exec_create_table name, options.merge(unlogged: unlogged, schema_name: schema, column_array: self.class.inject_raw_columns(columns))
     end
@@ -179,16 +169,14 @@ module PGx
     def clone_rename new_name
       PGx::Table.allocate.tap do |t|
         t.copy_from self
-        t.instance_variable_set(:@base_name, new_name)
+        t.name = new_name
         t.indexes.each { |index| index.name = nil }
       end
     end
 
-    def drop options = {}
-      if options[:check_exists]
-        return unless self.exists?
-      end
-      connection.exec_drop_table(name, options.merge({schema_name: schema}))
+    def drop options = { }
+      return if options[:check_exists] and !self.exists?
+      connection.exec_drop_table(name, options.merge({ schema_name: schema }))
     end
 
     def exists?
@@ -203,14 +191,14 @@ module PGx
         columns = row.map { |pair| pair[0] }
         values = row.map { |pair| pair[1] }
 
-        sql = connection.class.build_insert_into_pg_sql(name, {schema_name: schema, column_array: columns})
+        sql = connection.class.build_insert_into_pg_sql(name, { schema_name: schema, column_array: columns })
         connection.exec_and_log sql, values
       end
     end
 
     def insert_batch columns, rows, batch_size = 200
       return if rows.empty?
-      sql = connection.class.build_insert_into_pg_sql(name, {schema_name: schema, column_array: columns})
+      sql = connection.class.build_insert_into_pg_sql(name, { schema_name: schema, column_array: columns })
 
       rows.in_groups_of(batch_size, false).each do |row_group|
         connection.transaction do
@@ -219,7 +207,7 @@ module PGx
       end
     end
 
-    def insert_select select_string, options = {}
+    def insert_select select_string, options = { }
       options[:column_array] = options.delete(:column_names) || column_names_with_raw_columns
       options[:schema_name] = schema
       args = options.delete(:arguments) || []
@@ -227,12 +215,12 @@ module PGx
       connection.exec_and_log sql, args
     end
 
-    def update rows, options={}
+    def update rows, options={ }
       rows.each do |row|
         columns = row.map { |pair| pair[0] }
         values = row.map { |pair| pair[1] }
 
-        sql = connection.class.build_update_pg_sql(name, {schema_name: schema, column_array: columns, where_clause: options[:where_clause]})
+        sql = connection.class.build_update_pg_sql(name, { schema_name: schema, column_array: columns, where_clause: options[:where_clause] })
         connection.exec_and_log sql, values
       end
     end
@@ -287,10 +275,10 @@ module PGx
 
     def select *args
       options = if args.last.is_a? Hash
-                  args.pop.symbolize_keys
-                else
-                  Hash.new
-                end
+        args.pop.symbolize_keys
+      else
+        Hash.new
+      end
       where_clause = args.delete_at(0)
 
       sql = "SELECT "
@@ -306,10 +294,10 @@ module PGx
 
     def select_simple column, *args
       options = if args.last.is_a? Hash
-                  args.pop
-                else
-                  Hash.new
-                end
+        args.pop
+      else
+        Hash.new
+      end
       rs = select *args, options.merge(columns: column)
       return nil if rs.count == 0
       rs[0][rs[0].keys[0]]
@@ -321,7 +309,7 @@ module PGx
       end
     end
 
-    def with_connection(options = {})
+    def with_connection(options = { })
       PGx::Connection.connect(options) do |connection|
         self.connection = connection
         result = yield self, connection
@@ -330,36 +318,11 @@ module PGx
       end
     end
 
-    def schema_hotswap temp_schema_name = nil
-      temp_table = get_temp_table(through_schema: true)
-      connection.transaction do
-        drop check_exists: true
-        connection.exec_and_log "ALTER TABLE #{temp_table.qualified_name} SET SCHEMA #{schema}"
-      end
-    end
-
     def hotswap
       temp_table = get_temp_table
-      create_like_temp_table
       connection.transaction {
-        drop
-        temp_table.indexes.zip(indexes).each { |temp_index, index| temp_index.rename index.name }
-        temp_table.rename_temp_table
-        rename_temp_sequences
-      }
-    end
-
-    def hotswap_without_schema options = {}
-      temp_table = get_temp_table
-      create_like_temp_table
-      connection.transaction {
-        drop
-        temp_table.indexes = temp_table.fetch_indexes
-        temp_table.instance_variable_set(:@temp, false)
-        temp_table.indexes.each { |index| index.rename index.name.gsub(/temp_/, '') }
-        temp_table.instance_variable_set(:@temp, true)
-        temp_table.rename_temp_table
-        rename_temp_sequences unless options[:skip_sequences]
+        drop check_exists: true
+        connection.exec_and_log "ALTER TABLE #{temp_table.qualified_name} SET SCHEMA #{schema}"
       }
     end
 
@@ -426,38 +389,18 @@ module PGx
       end
     end
 
-    def do_through_temp_table options = {}
+    def do_through_temp_table options = { }
       raise "#{self} is a temp table! :(" if temp?
 
       temp_table = get_temp_table
-
-      temp_table.drop check_exists: true
-      temp_table.create
+      temp_table.create force: true
 
       yield temp_table
 
       temp_table.create_indexes unless options[:skip_indexes]
-
       temp_table.vacuum_analyze
-
       hotswap
     end
-
-    def do_through_temp_schema_table options = {}
-      temp_table = get_temp_table(through_schema: true)
-
-      temp_table.drop check_exists: true
-      temp_table.create
-
-      yield temp_table
-
-      temp_table.create_indexes unless options[:skip_indexes]
-
-      temp_table.vacuum_analyze
-
-      schema_hotswap
-    end
-
 
     def remove_sequences
       columns.each { |c| c.delete(:column_default) if c[:column_default] =~ /nextval.*::regclass/ }
@@ -484,47 +427,8 @@ module PGx
       connection.exec "DROP RULE #{rule_name} ON #{self.qualified_name}"
     end
 
-    def create_like_temp_table
-      raise "#{self} is a temp table! :(" if temp?
-      connection.exec_create_table(name, schema_name: schema, like: get_temp_table.qualified_name) unless exists?
-    end
-
     def self.qualified_name_for(schema, table)
       %Q{"#{schema}"."#{table}"}
-    end
-
-    protected
-
-    def rename_temp_table
-      raise "#{self} is not a temp table! :(" unless temp?
-
-      connection.exec_alter_table name, rename_to: base_name, schema_name: schema
-    end
-
-    def rename_temp_sequences
-      temp_sequence_names.each do |sequence|
-        sequence_name_without_schema = sequence.sub("#{schema}.", '')
-        new_sequence_name = sequence_name_without_schema.sub(temp_name, base_name)
-        connection.exec_alter_table sequence_name_without_schema, rename_to: new_sequence_name, schema_name: schema
-      end
-    end
-
-    def temp_sequence_names
-      sql_result = connection.exec <<-SQL.strip_heredoc
-      SELECT
-        PG_GET_SERIAL_SEQUENCE('#{qualified_name}', column_name) AS sequence
-      FROM information_schema.COLUMNS
-      WHERE table_schema = '#{schema}'
-        AND table_name = '#{base_name}'
-        AND PG_GET_SERIAL_SEQUENCE('#{qualified_name}', column_name) IS NOT NULL
-        AND PG_GET_SERIAL_SEQUENCE('#{qualified_name}', column_name) LIKE '#{schema}.#{temp_name}%';
-      SQL
-
-      sql_result.entries.map { |e| e['sequence'] }
-    end
-
-    def temp_name
-      "temp_#{base_name}"
     end
 
   end

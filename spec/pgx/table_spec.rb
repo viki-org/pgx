@@ -1,41 +1,31 @@
 require 'spec_helper'
 
 describe PGx::Table do
-  subject { PGx::Table.new base_name }
+  subject { PGx::Table.new name }
 
-  let(:base_name) { 'diego_table' }
+  let(:name) { 'diego_table' }
   let(:schema) { PGx::Table::DEFAULT_SCHEMA }
 
   let(:connection) { PGx::Connection.connect }
   after { connection.close }
 
   it { should be }
-  its(:base_name) { should == base_name }
-  its(:name) { should == base_name }
+  its(:name) { should == name }
   its(:schema) { should == schema }
-  its(:qualified_name) { should == %Q{"#{schema}"."#{base_name}"} }
+  its(:qualified_name) { should == %Q{"#{schema}"."#{name}"} }
   its(:columns) { should == [] }
   its(:indexes) { should == [] }
   it { should_not be_temp }
 
   context "options" do
-    subject { PGx::Table.new base_name, options }
+    subject { PGx::Table.new name, options }
 
     describe ':schema' do
       let(:options) { { schema: schema } }
       let(:schema) { 'wei_schema' }
 
       its(:schema) { should == schema }
-      its(:qualified_name) { should == %Q{"#{schema}"."#{base_name}"} }
-    end
-
-    describe ':temp' do
-      let(:options) { { temp: true } }
-
-      its(:base_name) { should == base_name }
-      its(:name) { should == "temp_#{base_name}" }
-      its(:qualified_name) { should == %Q{"#{schema}"."temp_#{base_name}"} }
-      it { should be_temp }
+      its(:qualified_name) { should == %Q{"#{schema}"."#{name}"} }
     end
 
     describe ':unlogged' do
@@ -74,7 +64,7 @@ describe PGx::Table do
     let(:table_json) { <<-JSON.strip_heredoc
       {
          "table_name":"test_table",
-         "schema_name":"test_schema",
+         "schema_name":"reporting",
          "columns":[
             { "column_name":"id",  "data_type":"SMALLINT", "api_column_path":[ "result", "id" ] },
             { "column_name":"foo", "is_nullable":true,     "api_column_path":[ "result", "foo" ] }
@@ -95,7 +85,7 @@ describe PGx::Table do
 
     it "loads the table configuration from catalog/table" do
       subject.name.should == table_name
-      subject.schema.should == 'test_schema'
+      subject.schema.should == 'reporting'
       subject.column_names.should == %w(id foo)
       subject.columns[0][:data_type].should == 'SMALLINT'
       subject.columns[1][:api_column_path].should == %w(result foo)
@@ -194,8 +184,8 @@ describe PGx::Table do
     end
 
     it "is false when any of the instance variables (except connection) does not match" do
-      (subject == PGx::Table.new(base_name, temp: true)).should be_false
-      (subject == PGx::Table.new(base_name, connection: 'foo')).should be_true
+      (subject == PGx::Table.new(name, temp: true)).should be_false
+      (subject == PGx::Table.new(name, connection: 'foo')).should be_true
     end
   end
 
@@ -225,10 +215,14 @@ describe PGx::Table do
     include_context "with columns and indexes"
     subject { table.get_temp_table }
 
-    [:base_name, :schema, :columns, :connection].each do |attribute|
+    [:name, :columns, :connection].each do |attribute|
       it "returns a table with the same #{attribute}" do
         subject.send(attribute).should == table.send(attribute)
       end
+    end
+
+    it "returns a table with different schema" do
+      subject.schema.should == "temp_#{table.schema}"
     end
 
     it "also duplicates indexes and points them to the new table" do
@@ -243,9 +237,8 @@ describe PGx::Table do
     include_context "with columns and indexes"
 
     it "should execute a create table query" do
-      options = { column_array: table.columns, schema_name: table.schema }
-      connection.should_receive(:exec).with(PGx::Connection.build_create_table_sql table.name, options)
       table.create
+      connection.table_exists?(table.name, table.schema).should be_true
     end
 
     it "should build the SQL query with the given options" do
@@ -264,31 +257,16 @@ describe PGx::Table do
       end
 
       it "executes a create table query" do
-        column_array = [{ column_name: 'wei_column' },
-                        { column_name: 'wei_column_raw', data_type: 'TEXT', is_nullable: true },
-                        { column_name: 'mike_column' },
-                        { column_name: 'mike_column_raw' }]
+        column_array = [
+          { :column_name => "wei_column", :is_nullable => false, :data_type => "VARCHAR(255)", :column_default => nil },
+          { :column_name => "wei_column_raw", :is_nullable => true, :data_type => "TEXT", :column_default => nil },
+          { :column_name => "mike_column", :is_nullable => false, :data_type => "VARCHAR(255)", :column_default => nil },
+          { :column_name => "mike_column_raw", :is_nullable => false, :data_type => "VARCHAR(255)", :column_default => nil }]
 
-        options = { column_array: column_array, schema_name: table.schema }
-        connection.should_receive(:exec).with(PGx::Connection.build_create_table_sql table.name, options)
         table.create
-      end
 
-      context "when pg_raw is set to false" do
-        let(:columns) do
-          [{ column_name: 'wei_column', pg_raw: false },
-           { column_name: 'mike_column', pg_raw: { is_nullable: false } }]
-        end
-
-        it "skips raw columns if pg_raw is false" do
-          column_array = [{ column_name: 'wei_column' },
-                          { column_name: 'mike_column' },
-                          { column_name: 'mike_column_raw', is_nullable: false }]
-
-          options = { column_array: column_array, schema_name: table.schema }
-          connection.should_receive(:exec).with(PGx::Connection.build_create_table_sql table.name, options)
-          table.create
-        end
+        t = PGx::Table.fetch connection, table.name, table.schema
+        t.columns.should == column_array
       end
     end
   end
@@ -555,7 +533,7 @@ describe PGx::Table do
     its(:name) { should == new_table_name }
 
     it "returns a copy of the original table" do
-      cloned_table.instance_variable_names.reject { |iv| %w(@indexes @base_name).include?(iv) }.each do |name|
+      cloned_table.instance_variable_names.reject { |iv| %w(@indexes @name).include?(iv) }.each do |name|
         cloned_table.instance_variable_get(name).should == table.instance_variable_get(name)
       end
     end
@@ -767,7 +745,6 @@ describe PGx::Table do
     before { table.stub(:get_temp_table).and_return(temp_table) }
 
     it "should create, populate and index a temporary countries table, and hotswap it" do
-      temp_table.should_receive(:drop).with(check_exists: true)
       temp_table.should_receive(:create)
       temp_table.should_receive(:insert).with(values_array)
       temp_table.should_receive(:create_indexes)
@@ -778,47 +755,47 @@ describe PGx::Table do
     end
   end
 
-  describe "#append_through_temp_table", with_schema: TEST_SCHEMA_NAME do
-    include_context "with columns and indexes"
-
-    let(:values_array) { [{ wei_column: 'foo', mike_column: 1 }, { wei_column: 'bar', mike_column: 2 }] }
-
-    before { table.stub(:get_temp_table).and_return(temp_table) }
-
-    context "when the live table already exists" do
-      before { table.create }
-
-      it "creates temp table and index, populates with data from live table, then hotswaps" do
-        temp_table.should_receive(:drop).with(check_exists: true)
-        temp_table.should_receive(:create)
-
-        temp_table.should_receive(:insert_select).with("* FROM #{table.qualified_name}")
-
-        temp_table.should_receive(:insert).with(values_array)
-        temp_table.should_receive(:create_indexes)
-        temp_table.should_receive(:vacuum_analyze)
-
-        table.should_receive(:hotswap)
-
-        table.append_through_temp_table values_array
-      end
-    end
-
-    context "when the live table does not exist" do
-      it "creates temp table and index, populates with data from live table, then hotswaps" do
-        table.should_not_receive(:insert_select)
-        table.append_through_temp_table values_array
-      end
-    end
-  end
+  #describe "#append_through_temp_table", with_schema: TEST_SCHEMA_NAME do
+  #  include_context "with columns and indexes"
+  #
+  #  let(:values_array) { [{ wei_column: 'foo', mike_column: 1 }, { wei_column: 'bar', mike_column: 2 }] }
+  #
+  #  before { table.stub(:get_temp_table).and_return(temp_table) }
+  #
+  #  context "when the live table already exists" do
+  #    before { table.create }
+  #
+  #    it "creates temp table and index, populates with data from live table, then hotswaps" do
+  #      temp_table.should_receive(:drop).with(check_exists: true)
+  #      temp_table.should_receive(:create)
+  #
+  #      temp_table.should_receive(:insert_select).with("* FROM #{table.qualified_name}")
+  #
+  #      temp_table.should_receive(:insert).with(values_array)
+  #      temp_table.should_receive(:create_indexes)
+  #      temp_table.should_receive(:vacuum_analyze)
+  #
+  #      table.should_receive(:hotswap)
+  #
+  #      table.append_through_temp_table values_array
+  #    end
+  #  end
+  #
+  #  context "when the live table does not exist" do
+  #    it "creates temp table and index, populates with data from live table, then hotswaps" do
+  #      table.should_not_receive(:insert_select)
+  #      table.append_through_temp_table values_array
+  #    end
+  #  end
+  #end
 
   describe "#to_hash" do
     include_context "with columns and indexes"
 
     it "should include everything needed to recreate the table" do
       table_hash = table.to_hash
-      table_name = table_hash.delete(:table_name)
-      PGx::Table.new(table_name, table_hash).should == table
+      table_name = table_hash.delete(:name)
+      PGx::Table.new(name, table_hash).should == table
     end
   end
 

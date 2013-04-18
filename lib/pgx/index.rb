@@ -32,8 +32,7 @@ module PGx
     end
 
     def name
-      base_name = @name || generated_name
-      table.temp? ? "temp_#{base_name}" : base_name
+      @name || generated_name
     end
 
     def schema
@@ -149,7 +148,7 @@ module PGx
     end
 
     def generated_name
-      "idx_#{table.base_name}_on_#{column_names[0]}".tap do |index|
+      "idx_#{table.name}_on_#{column_names[0]}".tap do |index|
         column_names[1..-1].each do |column_name|
           index << "_" << (table.columns.index { |column| column[:column_name] == column_name } + 1).to_s
         end
