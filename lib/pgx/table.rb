@@ -149,7 +149,7 @@ module PGx
     end
 
     def get_temp_table
-      PGx::Table.allocate.tap do |temp|
+      self.class.allocate.tap do |temp|
         temp.copy_from self
         temp.schema = "temp_#{temp.schema}"
         temp.instance_variable_set(:@temp, true)
@@ -167,7 +167,7 @@ module PGx
     end
 
     def clone_rename new_name
-      PGx::Table.allocate.tap do |t|
+      self.class.allocate.tap do |t|
         t.copy_from self
         t.name = new_name
         t.indexes.each { |index| index.name = nil }
