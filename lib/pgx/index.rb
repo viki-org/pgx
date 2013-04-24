@@ -1,3 +1,5 @@
+require 'digest/md5'
+
 module PGx
   class Index
     attr_accessor :table, :column_names, :name
@@ -150,7 +152,9 @@ module PGx
     def generated_name
       "idx_#{table.name}_on_#{column_names[0]}".tap do |index|
         column_names[1..-1].each do |column_name|
-          index << "_" << (table.columns.index { |column| column[:column_name] == column_name } + 1).to_s
+          col_pos = table.columns.index { |column| column[:column_name] == column_name }
+          str = col_pos ? (col_pos + 1).to_s : Digest::MD5.hexdigest(column_name)[0..3]
+          index << "_" << str
         end
       end
     end
