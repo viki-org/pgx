@@ -31,8 +31,8 @@ module PGx
   def self.configure(&block)
     config = Configurator.new
     block.call config
-    @table_path = config.table_path
-    @database_config = config.database_config
+    @table_path = config.table_path if config.table_path
+    @database_config = config.database_config if config.database_config
     nil
   end
 
