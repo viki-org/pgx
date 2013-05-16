@@ -22,7 +22,7 @@ end
 PGx.configure do |config|
   config.table_path = "/"
 
-  config.default_database_config = {
+  config.database_config = {
     :host => "localhost",
     :dbname => "pgx_test",
     :password => "",

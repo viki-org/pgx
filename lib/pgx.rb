@@ -23,7 +23,7 @@ end
 
 module PGx
   class << self
-    attr_accessor :table_path, :default_database_config, :log
+    attr_accessor :table_path, :database_config, :log
   end
 
   self.log = NullLogger.new
@@ -32,12 +32,12 @@ module PGx
     config = Configurator.new
     block.call config
     @table_path = config.table_path
-    @default_database_config = config.default_database_config
+    @database_config = config.database_config
     nil
   end
 
   class Configurator
-    attr_accessor :table_path, :default_database_config
+    attr_accessor :table_path, :database_config
 
     def initialize
     end

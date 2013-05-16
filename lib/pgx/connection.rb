@@ -17,7 +17,7 @@ module PGx
     end
 
     def self.connect connection_hash={ }
-      defaults = PGx.default_database_config
+      defaults = PGx.database_config
       ignore_errors = connection_hash.delete(:ignore_errors)
       conn = self.new defaults.merge(connection_hash)
       conn.set_notice_receiver { |result| PGx.log.warn result.error_message.strip }
