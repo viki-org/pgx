@@ -19,7 +19,7 @@ module PGx
         schema: table_spec.delete(:schema_name),
         columns: table_spec.delete(:columns),
         indexes: table_spec.delete(:indexes),
-        unlogged: table_spec.delete(:unlogged)._?(true)
+        unlogged: table_spec.delete(:unlogged)._?(false)
       }.merge(options)
       self.new table_name, table_options
     end
@@ -97,7 +97,7 @@ module PGx
       @schema = options[:schema] || DEFAULT_SCHEMA
       @temp = !(!options[:temp])
       @connection = options[:connection]
-      @unlogged = options[:unlogged]._?(true)
+      @unlogged = options[:unlogged]._?(false)
 
       self.indexes = options[:indexes] || []
     end
