@@ -1,5 +1,3 @@
-require 'log4r'
-
 require 'active_support/all'
 require 'pgx/initializers'
 require 'pgx/sql'
@@ -8,18 +6,27 @@ require 'pgx/index'
 require 'pgx/table'
 require 'pgx/output'
 
+class NullLogger
+  def info msg
+  end
+
+  def debug msg
+  end
+
+  def error msg
+  end
+
+  def warn msg
+  end
+end
+
+
 module PGx
-
-  LOG = Log4r::Logger.new 'pgx'
-  Log4r::Outputter.stdout.formatter = Log4r::PatternFormatter.new(:pattern => "[%l] %d: %m", :date_method => :utc)
-
-  def self.log
-    LOG
-  end
-
   class << self
-    attr_accessor :table_path, :default_database_config
+    attr_accessor :table_path, :default_database_config, :log
   end
+
+  self.log = NullLogger.new
 
   def self.configure(&block)
     config = Configurator.new
@@ -36,3 +43,4 @@ module PGx
     end
   end
 end
+

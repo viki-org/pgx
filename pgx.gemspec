@@ -21,7 +21,6 @@ Gem::Specification.new do |s|
   s.add_development_dependency "rspec"
   s.add_development_dependency "factory_girl"
 
-  s.add_runtime_dependency "log4r"
   s.add_runtime_dependency "pg"
   s.add_runtime_dependency "activesupport"
 
