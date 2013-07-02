@@ -15,6 +15,10 @@ module PGx
       connection.exec_and_log "ALTER TABLE #{table.qualified_name} ADD COLUMN #{column_name} #{column_type} #{extra}"
     end
 
+    def remove_column connection, table, column_name
+      connection.exec_and_log "ALTER TABLE #{table.qualified_name} DROP COLUMN #{column_name}"
+    end
+
     def create_schema connection, schema_name, options = {}
       connection.exec_and_log "CREATE SCHEMA #{schema_name}" unless connection.schema_exists?(schema_name)
     end
