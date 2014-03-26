@@ -241,5 +241,18 @@ describe PGx::Connection do
       end
     end
   end
+  
+  describe '#fetch_schema_names' do
+    it "should return an array of schema names" do
+      described_class.connect do |connection|
+        connection.fetch_schema_names.should include TEST_SCHEMA_NAME
+      end
+    end
+    it "should exclude postgresql schemas" do
+      described_class.connect do |connection|
+        connection.fetch_schema_names.select {|schema_name| /^pg_/ =~ schema_name}.should be_empty
+      end
+    end
+  end
 end
 

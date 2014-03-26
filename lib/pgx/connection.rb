@@ -103,6 +103,16 @@ module PGx
       SQL
       exec(sql, [schema_name]).map { |row| row['table_name'] }
     end
+    
+    def fetch_schema_names
+      sql = <<-SQL.strip_heredoc
+      SELECT S.schema_name
+      FROM information_schema.schemata S
+      WHERE NOT(S.schema_name like 'pg_%')
+      ORDER BY 1;
+      SQL
+      exec(sql).map { |row| row['schema_name'] }
+    end
 
   end
 end
