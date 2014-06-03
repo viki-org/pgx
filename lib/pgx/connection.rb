@@ -114,5 +114,19 @@ module PGx
       exec(sql).map { |row| row['schema_name'] }
     end
 
+    def fetch_relation_sizes
+      sql = <<-SQL.strip_heredoc
+      SELECT
+        nspname || '.' || relname AS "relation",
+        pg_size_pretty(pg_relation_size(C.oid)) AS "size",
+        TS.spcname AS "table space"
+      FROM pg_class C
+      LEFT JOIN pg_namespace N ON (N.oid = C.relnamespace)
+      LEFT JOIN pg_tablespace TS ON C.reltablespace = TS.oid
+      WHERE nspname NOT IN ('pg_catalog', 'information_schema')
+      ORDER BY pg_relation_size(C.oid) DESC;
+      SQL
+      exec(sql).map { |row| { relation: row["relation"], size: row["size"], table_space: row["table space"] } }
+    end
   end
 end
