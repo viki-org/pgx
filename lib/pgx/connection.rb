@@ -129,4 +129,14 @@ module PGx
       exec(sql).map { |row| { relation: row["relation"], size: row["size"], table_space: row["table space"] } }
     end
   end
+
+  def fetch_tablespace_names
+      sql = <<-SQL.strip_heredoc
+      SELECT
+        spcname
+      FROM
+        pg_tablespace;
+      SQL
+      exec(sql).map { |row| row['spcname'] }
+  end
 end
