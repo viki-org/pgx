@@ -126,7 +126,7 @@ module PGx
       WHERE nspname NOT IN ('pg_catalog', 'information_schema')
       ORDER BY pg_relation_size(C.oid) DESC;
       SQL
-      exec(sql).map { |row| { relation: row["relation"], size: row["size"], table_space: row["table space"] } }
+      exec(sql).map { |row| { relation: row["relation"], size: row["size"], tablespace: row["table space"] } }
     end
   
     def fetch_tablespace_names
